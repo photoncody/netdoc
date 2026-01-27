@@ -1,9 +1,10 @@
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 # Renamed database file to netdoc.db
-SQLALCHEMY_DATABASE_URL = "sqlite:////data/netdoc.db"
+SQLALCHEMY_DATABASE_URL = os.getenv("NETDOC_DB_URL", "sqlite:////data/netdoc.db")
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
