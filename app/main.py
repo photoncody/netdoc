@@ -1,5 +1,7 @@
 import os
 import secrets
+import uuid
+import shutil
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request, Response, status
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -241,6 +243,58 @@ def delete_device(device_id: int, db: Session = Depends(get_db)):
     db_device = db.query(models.Device).filter(models.Device.id == device_id).first()
     if not db_device: raise HTTPException(status_code=404, detail="Device not found")
     db.delete(db_device)
+    db.commit()
+    return {"ok": True}
+
+# --- Image Upload Endpoints ---
+
+UPLOAD_DIR = "app/static/uploads"
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+
+@app.post("/api/devices/{device_id}/images", response_model=schemas.DeviceImage, dependencies=[Depends(verify_auth)])
+def upload_device_image(device_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    db_device = db.query(models.Device).filter(models.Device.id == device_id).first()
+    if not db_device: raise HTTPException(status_code=404, detail="Device not found")
+
+    # Validate extension
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Invalid file type. Allowed: jpg, jpeg, png, gif, webp")
+
+    # Generate unique filename
+    filename = f"{uuid.uuid4()}{file_ext}"
+
+    # Ensure directory exists
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+    filepath = os.path.join(UPLOAD_DIR, filename)
+
+    with open(filepath, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    db_image = models.DeviceImage(device_id=device_id, filename=filename)
+    db.add(db_image)
+    db.commit()
+    db.refresh(db_image)
+    return db_image
+
+@app.get("/api/devices/{device_id}/images", response_model=List[schemas.DeviceImage], dependencies=[Depends(verify_auth)])
+def list_device_images(device_id: int, db: Session = Depends(get_db)):
+    db_device = db.query(models.Device).filter(models.Device.id == device_id).first()
+    if not db_device: raise HTTPException(status_code=404, detail="Device not found")
+    return db_device.images
+
+@app.delete("/api/images/{image_id}", dependencies=[Depends(verify_auth)])
+def delete_device_image(image_id: int, db: Session = Depends(get_db)):
+    db_image = db.query(models.DeviceImage).filter(models.DeviceImage.id == image_id).first()
+    if not db_image: raise HTTPException(status_code=404, detail="Image not found")
+
+    # Delete file from filesystem
+    filepath = os.path.join("app/static/uploads", db_image.filename)
+    if os.path.exists(filepath):
+        os.remove(filepath)
+
+    db.delete(db_image)
     db.commit()
     return {"ok": True}
 

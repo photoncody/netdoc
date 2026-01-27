@@ -232,6 +232,25 @@
                         <input v-model="form.uplink_notes" placeholder="e.g. Gi1/0/1 -> Gi0/24" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2">
                     </div>
 
+                    <div class="col-span-full font-bold text-blue-500 border-b dark:border-gray-800 pb-2 mt-4">Images</div>
+                    <div class="col-span-full">
+                        <div v-if="images.length > 0" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                            <div v-for="img in images" :key="img.id" class="relative group">
+                                <a :href="'/static/uploads/' + img.filename" target="_blank">
+                                    <img :src="'/static/uploads/' + img.filename" class="w-full h-32 object-cover rounded border dark:border-gray-700 bg-gray-100 dark:bg-gray-800">
+                                </a>
+                                <button @click="deleteImage(img.id)" class="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition shadow-sm" type="button">
+                                    <i data-lucide="trash-2" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div v-if="isEditing" class="flex items-center gap-2">
+                            <input type="file" ref="imageInput" @change="uploadImage" class="text-xs file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-gray-800 dark:file:text-blue-400" accept="image/*" multiple>
+                            <span v-if="uploadingImage" class="text-xs text-gray-500 flex items-center gap-1"><i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i> Uploading...</span>
+                        </div>
+                        <div v-else class="text-xs text-gray-500 italic">Save device to upload images.</div>
+                    </div>
+
                     <div class="col-span-full font-bold text-blue-500 border-b dark:border-gray-800 pb-2 mt-4">Properties</div>
                     <div class="flex gap-6">
                         <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" v-model="form.flag_dhcp" class="w-4 h-4 rounded text-blue-600"><span>DHCP Enabled</span></label>
@@ -422,6 +441,10 @@
                     subnetPageSize: 256,
                     subnetKey: 0, // NEW KEY
                     
+                    // Images
+                    images: [],
+                    uploadingImage: false,
+
                     // Collapsed state
                     expandedGroups: {},
                     // Device Types
@@ -533,6 +556,52 @@
                 }
             },
             methods: {
+                async fetchImages(deviceId) {
+                    if (!deviceId) return;
+                    try {
+                        const res = await fetch(`/api/devices/${deviceId}/images`);
+                        if (res.ok) {
+                            this.images = await res.json();
+                        }
+                    } catch (e) { console.error("Error fetching images", e); }
+                },
+                async uploadImage(event) {
+                    const files = event.target.files;
+                    if (!files || !files.length) return;
+
+                    this.uploadingImage = true;
+                    try {
+                        for (let i = 0; i < files.length; i++) {
+                            const formData = new FormData();
+                            formData.append('file', files[i]);
+
+                            const res = await fetch(`/api/devices/${this.form.id}/images`, {
+                                method: 'POST',
+                                body: formData
+                            });
+
+                            if (!res.ok) {
+                                alert("Failed to upload image " + files[i].name);
+                            }
+                        }
+                        await this.fetchImages(this.form.id);
+                    } catch(e) { console.error(e); alert("Error uploading image"); }
+                    finally {
+                        this.uploadingImage = false;
+                        event.target.value = ''; // Reset input
+                    }
+                },
+                async deleteImage(imageId) {
+                    if (!confirm("Delete this image?")) return;
+                    try {
+                        const res = await fetch(`/api/images/${imageId}`, { method: 'DELETE' });
+                        if (res.ok) {
+                            await this.fetchImages(this.form.id);
+                        } else {
+                            alert("Failed to delete image");
+                        }
+                    } catch(e) { console.error(e); alert("Error deleting image"); }
+                },
                 getSmartCoords(x, y) {
                     const menuWidth = 192; // 12rem
                     const menuHeight = 350; // Estimated height with clone option
@@ -703,9 +772,11 @@
                         this.isEditing = true; 
                         this.selectedDevice = device; 
                         this.form = JSON.parse(JSON.stringify(device)); 
+                        this.fetchImages(device.id);
                     } else { 
                         this.isEditing = false; 
                         this.form = { name: '', device_type: this.deviceTypes[0], location: '', flag_dhcp: false, flag_public_ip: false, flag_oob: false, flag_wireless: false, flag_tailscale: false, custom_fields: [] }; 
+                        this.images = [];
                     }
                     Object.assign(this.form, prefill);
                     this.showModal = true;

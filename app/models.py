@@ -1,5 +1,17 @@
-from sqlalchemy import Column, Integer, String, Boolean, JSON
+from sqlalchemy import Column, Integer, String, Boolean, JSON, ForeignKey, DateTime
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 from .database import Base
+
+class DeviceImage(Base):
+    __tablename__ = "device_images"
+
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(Integer, ForeignKey("devices.id"))
+    filename = Column(String)
+    uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    device = relationship("Device", back_populates="images")
 
 class Device(Base):
     __tablename__ = "devices"
@@ -38,3 +50,5 @@ class Device(Base):
 
     # Custom Fields
     custom_fields = Column(JSON, default=list)
+
+    images = relationship("DeviceImage", back_populates="device", cascade="all, delete-orphan")
