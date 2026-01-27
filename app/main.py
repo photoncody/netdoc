@@ -248,7 +248,7 @@ def delete_device(device_id: int, db: Session = Depends(get_db)):
 
 # --- Image Upload Endpoints ---
 
-UPLOAD_DIR = "app/static/uploads"
+UPLOAD_DIR = os.getenv("NETDOC_UPLOAD_DIR", "/data/uploads")
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
 @app.post("/api/devices/{device_id}/images", response_model=schemas.DeviceImage, dependencies=[Depends(verify_auth)])
@@ -297,5 +297,16 @@ def delete_device_image(image_id: int, db: Session = Depends(get_db)):
     db.delete(db_image)
     db.commit()
     return {"ok": True}
+
+# Ensure upload directory exists on startup
+if not os.path.exists(UPLOAD_DIR):
+    try:
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+    except OSError:
+        print(f"Warning: Could not create upload directory {UPLOAD_DIR}")
+
+# Mount uploads directory - MUST be before root mount
+if os.path.exists(UPLOAD_DIR):
+    app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
