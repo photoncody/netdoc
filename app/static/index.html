@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetDoc</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='16' y='16' width='6' height='6' rx='1'/><rect x='2' y='16' width='6' height='6' rx='1'/><rect x='9' y='2' width='6' height='6' rx='1'/><path d='M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3'/><path d='M12 12V8'/></svg>">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { colors: { gray: { 750: '#2d3748', 850: '#1a202c', 950: '#0d1117' } } } }
+        }
+    </script>
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1a202c; }
+        ::-webkit-scrollbar-thumb { background: #4a5568; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #718096; }
+        [v-cloak] { display: none; }
+        
+        /* Smart Context Menu Positioning */
+        .context-menu-fixed { position: fixed; z-index: 60; width: 12rem; }
+        .context-menu-center { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85%; max-width: 300px; z-index: 60; }
+        
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-950 text-gray-800 dark:text-gray-200 h-screen flex flex-col overflow-hidden text-sm">
+    <div id="app" v-cloak class="flex flex-col h-full relative">
+        
+        <input type="file" ref="fileInput" class="hidden" accept=".csv" @change="handleImport">
+
+        <div v-if="isAnyMenuOpen" class="fixed inset-0 z-40 bg-transparent" @click.stop="closeAllMenus"></div>
+        <div v-if="showModal || showConnectionsModal || showSubnetModal" class="fixed inset-0 z-[70] bg-black/50" @click="closeAllModals"></div>
+
+        <div v-if="showLogin" class="fixed inset-0 z-[100] bg-gray-900 flex items-center justify-center p-4">
+            <div class="bg-white dark:bg-gray-800 w-full max-w-sm rounded-xl shadow-2xl p-8">
+                <div class="flex justify-center mb-6 text-blue-600 dark:text-blue-400"><i data-lucide="lock" class="w-12 h-12"></i></div>
+                <h2 class="text-2xl font-bold text-center mb-6">NetDoc Login</h2>
+                <form @submit.prevent="performLogin" class="space-y-4">
+                    <div><label class="text-xs font-bold text-gray-500 uppercase block mb-1">Username</label><input v-model="loginCreds.username" class="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded p-3 outline-none" type="text" required></div>
+                    <div><label class="text-xs font-bold text-gray-500 uppercase block mb-1">Password</label><input v-model="loginCreds.password" class="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded p-3 outline-none" type="password" required></div>
+                    <div v-if="loginError" class="text-red-500 text-sm text-center">{{ loginError }}</div>
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded transition">Login</button>
+                </form>
+            </div>
+        </div>
+
+        <header class="bg-white dark:bg-gray-900 border-b dark:border-gray-800 shadow-sm z-30 relative shrink-0">
+            <div class="py-2 px-4 flex justify-between items-center gap-4">
+                <h1 class="text-xl font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2 whitespace-nowrap"><i data-lucide="network"></i> NetDoc</h1>
+                <div class="hidden md:flex items-center gap-4 flex-1 justify-end">
+                    
+                    <div class="relative w-64">
+                        <i data-lucide="search" class="absolute left-2 top-2 w-4 h-4 text-gray-400"></i>
+                        <input v-model="searchQuery" placeholder="Search..." class="w-full bg-gray-100 dark:bg-gray-800 border-none rounded py-1 pl-8 pr-8 text-xs focus:ring-2 focus:ring-blue-500 outline-none h-8">
+                        <button v-if="searchQuery" @click="searchQuery = ''" class="absolute right-2 top-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><i data-lucide="x" class="w-4 h-4"></i></button>
+                    </div>
+                    
+                    <button @click="showSubnetModal = true; nextTickFocusSubnet()" class="bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded text-xs flex items-center gap-2 whitespace-nowrap"><i data-lucide="grid" class="w-3 h-3"></i> Subnet View</button>
+
+                    <div class="flex bg-gray-200 dark:bg-gray-800 rounded p-0.5 text-xs whitespace-nowrap">
+                        <button @click="group_by = 'location'" :class="{'bg-white dark:bg-gray-700 shadow': group_by === 'location'}" class="px-3 py-1 rounded transition">By Location</button>
+                        <button @click="group_by = 'device_type'" :class="{'bg-white dark:bg-gray-700 shadow': group_by === 'device_type'}" class="px-3 py-1 rounded transition">By Type</button>
+                    </div>
+                    <button @click.stop="toggleMenu('colMenu')" class="bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded text-xs flex items-center gap-2 whitespace-nowrap"><i data-lucide="columns" class="w-3 h-3"></i> Columns</button>
+                    
+                    <div class="flex bg-gray-200 dark:bg-gray-800 rounded p-0.5 text-xs whitespace-nowrap">
+                        <button @click="triggerImport" class="px-3 py-1 rounded hover:bg-white dark:hover:bg-gray-700 flex items-center gap-2 text-gray-600 dark:text-gray-300 transition"><i data-lucide="upload" class="w-3 h-3"></i> Import</button>
+                        <a href="/api/devices/export" target="_blank" class="px-3 py-1 rounded hover:bg-white dark:hover:bg-gray-700 flex items-center gap-2 text-gray-600 dark:text-gray-300 transition"><i data-lucide="download" class="w-3 h-3"></i> Export</a>
+                    </div>
+                    
+                    <button @click="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded text-xs flex items-center gap-2 whitespace-nowrap"><i data-lucide="plus-circle" class="w-3 h-3"></i> Add Device</button>
+                    <button @click="toggleTheme" class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-800"><i data-lucide="moon" v-if="!isDark" class="w-4 h-4"></i><i data-lucide="sun" v-else class="w-4 h-4 text-yellow-400"></i></button>
+                    <button v-if="authEnabled" @click="performLogout" title="Logout" class="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"><i data-lucide="log-out" class="w-4 h-4"></i></button>
+                </div>
+                <div class="flex items-center gap-2 md:hidden">
+                    <button @click="toggleTheme" class="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-800"><i data-lucide="moon" v-if="!isDark" class="w-5 h-5"></i><i data-lucide="sun" v-else class="w-5 h-5 text-yellow-400"></i></button>
+                    <button @click.stop="toggleMenu('mobileMenu')" class="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-800"><i data-lucide="menu" class="w-6 h-6"></i></button>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 overflow-auto p-4 z-0">
+            <div v-for="(devices, group) in groupedDevices" :key="group" class="mb-2">
+                <div @click="toggleGroup(group)" class="flex items-center gap-2 p-2 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 rounded cursor-pointer select-none border dark:border-gray-700">
+                    <i data-lucide="chevron-right" class="w-4 h-4 transition-transform duration-200" :class="{'rotate-90': expandedGroups[group]}"></i>
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">{{ group || 'Unassigned' }} <span class="ml-2 px-1.5 py-0.5 bg-gray-300 dark:bg-gray-900 rounded-full text-[10px]">{{ devices.length }}</span></h2>
+                </div>
+                <div v-show="expandedGroups[group]" class="mt-1 overflow-x-auto bg-white dark:bg-gray-900 rounded border dark:border-gray-800 shadow-sm ml-2 border-l-4 border-l-blue-500 dark:border-l-blue-600">
+                    <table class="w-full text-left border-collapse whitespace-nowrap text-xs">
+                        <thead class="bg-gray-50 dark:bg-gray-850 text-gray-500 font-semibold uppercase border-b dark:border-gray-800">
+                            <tr>
+                                <th class="p-2 w-8"></th><th class="p-2 w-10"></th>
+                                <th v-if="cols.name" @click="sort('name')" class="p-2 cursor-pointer hover:text-blue-500">Name</th>
+                                <th v-if="cols.type" @click="sort('device_type')" class="p-2 cursor-pointer hover:text-blue-500">Type</th>
+                                <th v-if="cols.location" @click="sort('location')" class="p-2 cursor-pointer hover:text-blue-500">Location</th>
+                                <th v-if="cols.ip" @click="sort('ip_address')" class="p-2 cursor-pointer hover:text-blue-500">IP Address</th>
+                                <th v-if="cols.subnet" @click="sort('subnet_mask')" class="p-2 cursor-pointer hover:text-blue-500">Subnet</th>
+                                <th v-if="cols.gateway" @click="sort('default_gateway')" class="p-2 cursor-pointer hover:text-blue-500">Gateway</th>
+                                <th v-if="cols.dns1" @click="sort('primary_dns')" class="p-2 cursor-pointer hover:text-blue-500">Pri DNS</th>
+                                <th v-if="cols.dns2" @click="sort('secondary_dns')" class="p-2 cursor-pointer hover:text-blue-500">Sec DNS</th>
+                                <th v-if="cols.dns" @click="sort('dns_name')" class="p-2 cursor-pointer hover:text-blue-500">DNS Name</th>
+                                <th v-if="cols.mac" @click="sort('mac_address')" class="p-2 cursor-pointer hover:text-blue-500">MAC Address</th>
+                                <th v-if="cols.model" @click="sort('model')" class="p-2 cursor-pointer hover:text-blue-500">Model</th>
+                                <th v-if="cols.serial" @click="sort('serial_number')" class="p-2 cursor-pointer hover:text-blue-500">Serial</th>
+                                <th v-if="cols.os" @click="sort('os')" class="p-2 cursor-pointer hover:text-blue-500">OS</th>
+                                <th v-if="cols.vhost" @click="sort('virtual_host')" class="p-2 cursor-pointer hover:text-blue-500">Virt Host</th>
+                                <th v-if="cols.guest" @click="sort('guest_name')" class="p-2 cursor-pointer hover:text-blue-500">Guest Name</th>
+                                <th v-if="cols.uplink" class="p-2">Uplink</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                            <tr v-for="device in devices" :key="device.id" @dblclick="openModal(device)" @contextmenu.prevent="openContextMenu($event, device, 'mouse')" class="hover:bg-blue-50 dark:hover:bg-gray-800 transition group cursor-pointer">
+                                <td class="p-1 px-2 text-center"><button @click.stop="openContextMenu($event, device, 'button')" class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 w-6 h-6 flex items-center justify-center"><i data-lucide="more-vertical" class="w-3 h-3"></i></button></td>
+                                <td class="p-1 px-2 flex gap-1 items-center h-full">
+                                    <i v-if="device.flag_dhcp" data-lucide="network" class="w-3 h-3 text-green-500" title="DHCP Enabled"></i>
+                                    <i v-if="device.flag_public_ip" data-lucide="globe" class="w-3 h-3 text-blue-500" title="Public IP"></i>
+                                    <i v-if="device.flag_wireless" data-lucide="wifi" class="w-3 h-3 text-cyan-500" title="Wireless"></i>
+                                    <i v-if="device.flag_oob" data-lucide="life-buoy" class="w-3 h-3 text-purple-500" title="Out of Band Mgmt"></i>
+                                    <i v-if="device.flag_tailscale" data-lucide="shield-check" class="w-3 h-3 text-indigo-500" title="Tailscale Connected"></i>
+                                    <i v-if="device.virtual_host || device.guest_name" data-lucide="box" class="w-3 h-3 text-orange-500" title="Virtual Machine"></i>
+                                </td>
+                                <td v-if="cols.name" class="p-1 px-2 font-medium text-blue-600 dark:text-blue-400">{{ device.name }}</td>
+                                <td v-if="cols.type" class="p-1 px-2">{{ device.device_type }}</td>
+                                <td v-if="cols.location" class="p-1 px-2">{{ device.location }}</td>
+                                <td v-if="cols.ip" class="p-1 px-2 font-mono text-gray-600 dark:text-gray-400">{{ device.ip_address }}</td>
+                                <td v-if="cols.subnet" class="p-1 px-2 font-mono text-gray-500">{{ device.subnet_mask }}</td>
+                                <td v-if="cols.gateway" class="p-1 px-2 font-mono text-gray-500">{{ device.default_gateway }}</td>
+                                <td v-if="cols.dns1" class="p-1 px-2 font-mono text-gray-500">{{ device.primary_dns }}</td>
+                                <td v-if="cols.dns2" class="p-1 px-2 font-mono text-gray-500">{{ device.secondary_dns }}</td>
+                                <td v-if="cols.dns" class="p-1 px-2 font-mono text-gray-500">{{ device.dns_name }}</td>
+                                <td v-if="cols.mac" class="p-1 px-2 font-mono text-gray-500">{{ device.mac_address }}</td>
+                                <td v-if="cols.model" class="p-1 px-2 text-gray-500">{{ device.manufacturer }} {{ device.model }}</td>
+                                <td v-if="cols.serial" class="p-1 px-2 font-mono text-gray-500">{{ device.serial_number }}</td>
+                                <td v-if="cols.os" class="p-1 px-2 text-gray-500">{{ device.os }}</td>
+                                <td v-if="cols.vhost" class="p-1 px-2 text-gray-500">{{ device.virtual_host }}</td>
+                                <td v-if="cols.guest" class="p-1 px-2 text-gray-500">{{ device.guest_name }}</td>
+                                <td v-if="cols.uplink" class="p-1 px-2 text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                                    <span v-if="device.uplink_device" class="flex items-center gap-1">
+                                        <i data-lucide="link" class="w-3 h-3 text-blue-500"></i> {{ device.uplink_device }}
+                                    </span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+
+        <div v-if="menus.mobileMenu" class="fixed inset-0 z-50 bg-gray-50 dark:bg-gray-900 p-4 flex flex-col gap-4 overflow-y-auto border-t dark:border-gray-800 shadow-xl">
+            <div class="flex justify-between items-center pb-2"><h2 class="text-xl font-bold">Menu</h2><div class="flex gap-2"><button v-if="authEnabled" @click="performLogout" class="p-2 bg-red-100 dark:bg-red-900/30 text-red-500 rounded"><i data-lucide="log-out" class="w-6 h-6"></i></button><button @click="closeAllMenus" class="p-2 bg-gray-200 dark:bg-gray-800 rounded"><i data-lucide="x" class="w-6 h-6"></i></button></div></div>
+            <div class="relative w-full">
+                <i data-lucide="search" class="absolute left-3 top-3 w-4 h-4 text-gray-400"></i>
+                <input v-model="searchQuery" placeholder="Search devices..." class="w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded py-2.5 pl-10 pr-10 text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-sm">
+                <button v-if="searchQuery" @click="searchQuery = ''" class="absolute right-3 top-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <button @click="showSubnetModal = true; nextTickFocusSubnet(); closeAllMenus()" class="w-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 py-3 rounded text-base font-bold flex justify-center items-center gap-2"><i data-lucide="grid" class="w-5 h-5"></i> Subnet View</button>
+            <button @click="openModal()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded text-base font-bold flex justify-center items-center gap-2 shadow"><i data-lucide="plus-circle" class="w-5 h-5"></i> Add New Device</button>
+            <div class="flex flex-col gap-1"><span class="text-xs font-bold uppercase text-gray-500">View By</span><div class="flex bg-gray-200 dark:bg-gray-800 rounded p-1"><button @click="group_by = 'location'" :class="{'bg-white dark:bg-gray-700 shadow': group_by === 'location'}" class="flex-1 py-2 rounded transition text-sm">Location</button><button @click="group_by = 'device_type'" :class="{'bg-white dark:bg-gray-700 shadow': group_by === 'device_type'}" class="flex-1 py-2 rounded transition text-sm">Type</button></div></div>
+            <div class="grid grid-cols-2 gap-3"><button @click="triggerImport" class="bg-white dark:bg-gray-800 border dark:border-gray-700 py-3 rounded flex justify-center items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700"><i data-lucide="upload" class="w-4 h-4"></i> Import</button><a href="/api/devices/export" target="_blank" class="bg-white dark:bg-gray-800 border dark:border-gray-700 py-3 rounded flex justify-center items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700"><i data-lucide="download" class="w-4 h-4"></i> Export</a></div>
+            <div class="border-t dark:border-gray-800 pt-2"><h3 class="text-sm font-bold text-gray-500 uppercase mb-2">Visible Columns</h3><div class="grid grid-cols-2 gap-2"><label v-for="(val, key) in cols" :key="key" class="flex items-center gap-2 p-2 bg-white dark:bg-gray-800 rounded border dark:border-gray-700 text-sm"><input type="checkbox" v-model="cols[key]" class="w-4 h-4 rounded text-blue-600">{{ colLabels[key] }}</label></div></div>
+        </div>
+
+        <div v-if="menus.colMenu" class="fixed top-[60px] right-4 w-64 bg-white dark:bg-gray-800 border dark:border-gray-700 shadow-2xl rounded p-4 z-50">
+            <div class="flex justify-between items-center mb-2">
+                <h3 class="font-bold text-sm text-gray-500">VISIBLE COLUMNS</h3>
+            </div>
+            <div class="flex justify-between mb-3 gap-1 pb-2 border-b dark:border-gray-700">
+                <button @click="selectAllCols" class="text-[10px] bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 px-2 py-1 rounded hover:bg-blue-200 dark:hover:bg-blue-800 transition">All</button>
+                <button @click="selectNoCols" class="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition">None</button>
+                <button @click="resetCols" class="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition">Default</button>
+            </div>
+            <div class="grid grid-cols-1 gap-2 max-h-[60vh] overflow-y-auto"><label v-for="(val, key) in cols" :key="key" class="flex items-center gap-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer text-xs"><input type="checkbox" v-model="cols[key]" class="rounded text-blue-600">{{ colLabels[key] }}</label></div>
+        </div>
+
+        <div v-if="menus.contextMenu" :style="contextMenuStyles" :class="contextMenuMode === 'mouse' ? 'context-menu-fixed' : 'context-menu-center'" class="bg-white dark:bg-gray-800 shadow-xl rounded-lg border dark:border-gray-700 py-1 overflow-hidden">
+            <button @click="openModal(selectedDevice); closeAllMenus()" class="w-full text-left px-4 py-3 hover:bg-blue-50 dark:hover:bg-gray-700 flex items-center gap-2"><i data-lucide="edit" class="w-4 h-4"></i> Edit Device</button>
+            <button @click="cloneDevice(selectedDevice); closeAllMenus()" class="w-full text-left px-4 py-3 hover:bg-blue-50 dark:hover:bg-gray-700 flex items-center gap-2"><i data-lucide="copy" class="w-4 h-4"></i> Clone Device</button>
+            <button @click="openConnections(selectedDevice); closeAllMenus()" class="w-full text-left px-4 py-3 hover:bg-blue-50 dark:hover:bg-gray-700 flex items-center gap-2"><i data-lucide="network" class="w-4 h-4"></i> View Connections</button>
+            <div class="h-px bg-gray-200 dark:bg-gray-700 my-1"></div>
+            <a :href="'http://' + (selectedDevice.dns_name || selectedDevice.ip_address)" target="_blank" @click="closeAllMenus()" class="block w-full text-left px-4 py-3 hover:bg-blue-50 dark:hover:bg-gray-700 flex items-center gap-2"><i data-lucide="globe" class="w-4 h-4"></i> HTTP</a>
+            <a :href="'https://' + (selectedDevice.dns_name || selectedDevice.ip_address)" target="_blank" @click="closeAllMenus()" class="block w-full text-left px-4 py-3 hover:bg-blue-50 dark:hover:bg-gray-700 flex items-center gap-2"><i data-lucide="lock" class="w-4 h-4"></i> HTTPS</a>
+            <div class="h-px bg-gray-200 dark:bg-gray-700 my-1"></div>
+            <a :href="'ssh://' + (selectedDevice.dns_name || selectedDevice.ip_address)" target="_blank" @click="closeAllMenus()" class="block w-full text-left px-4 py-3 hover:bg-blue-50 dark:hover:bg-gray-700 flex items-center gap-2"><i data-lucide="terminal" class="w-4 h-4"></i> SSH Connect</a>
+            <a :href="'rdp://' + (selectedDevice.dns_name || selectedDevice.ip_address)" @click="closeAllMenus()" class="block w-full text-left px-4 py-3 hover:bg-blue-50 dark:hover:bg-gray-700 flex items-center gap-2"><i data-lucide="monitor" class="w-4 h-4"></i> RDP Connect</a>
+            <div class="h-px bg-gray-200 dark:bg-gray-700 my-1"></div>
+            <button @click="deleteDevice(selectedDevice.id); closeAllMenus()" class="w-full text-left px-4 py-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"><i data-lucide="trash" class="w-4 h-4"></i> Delete</button>
+        </div>
+
+        <div v-if="showModal" class="fixed inset-0 z-[80] flex items-center justify-center p-4 pointer-events-none">
+            <div class="bg-white dark:bg-gray-900 w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl border dark:border-gray-700 flex flex-col pointer-events-auto">
+                <div class="p-6 border-b dark:border-gray-800 flex justify-between items-center sticky top-0 bg-white dark:bg-gray-900 z-10"><h2 class="text-xl font-bold">{{ isEditing ? 'Edit Device' : 'New Device' }}</h2><button @click="closeAllModals" class="text-gray-500 hover:text-red-500"><i data-lucide="x"></i></button></div>
+                <div class="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div class="col-span-full font-bold text-blue-500 border-b dark:border-gray-800 pb-2 mt-2">Identification</div>
+                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Device Name</label><input v-model="form.name" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2 outline-none"></div>
+                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Type</label><select v-model="form.device_type" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2"><option v-for="type in deviceTypes" :key="type" :value="type">{{ type }}</option></select></div>
+                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Location</label><input v-model="form.location" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2"></div>
+                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Manufacturer</label><input v-model="form.manufacturer" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2"></div>
+                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Model</label><input v-model="form.model" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2"></div>
+                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Serial Number</label><input v-model="form.serial_number" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2"></div>
+                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">OS</label><input v-model="form.os" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2"></div>
+                    
+                    <div class="col-span-full font-bold text-blue-500 border-b dark:border-gray-800 pb-2 mt-4">Networking</div>
+                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">IP Address</label><input v-model="form.ip_address" @blur="handleIPBlur" :class="{'border-red-500': errors.ip_address}" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2 font-mono"></div>
+                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Subnet Mask</label><input v-model="form.subnet_mask" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2 font-mono"></div>
+                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Gateway</label><input v-model="form.default_gateway" @blur="validateIP('default_gateway')" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2 font-mono"></div>
+                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Primary DNS</label><input v-model="form.primary_dns" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2 font-mono"></div>
+                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Secondary DNS</label><input v-model="form.secondary_dns" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2 font-mono"></div>
+                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">DNS Name</label><input v-model="form.dns_name" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2 font-mono"></div>
+                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">MAC Address</label><input v-model="form.mac_address" @blur="validateMAC" :class="{'border-red-500': errors.mac_address}" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2 font-mono"></div>
+                    
+                    <div class="col-span-full font-bold text-blue-500 border-b dark:border-gray-800 pb-2 mt-4">Virtualization</div>
+                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Virtual Host</label><select v-model="form.virtual_host" @change="onVirtualHostChange" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2"><option value="">-- None --</option><option v-for="d in virtualHostCandidates" :key="d.id" :value="d.name">{{ d.name }}</option></select></div>
+                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Guest Name</label><input v-model="form.guest_name" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2"></div>
+                    
+                    <div class="col-span-full font-bold text-blue-500 border-b dark:border-gray-800 pb-2 mt-4">Connections</div>
+                    <div class="space-y-1">
+                        <label class="text-xs uppercase font-bold text-gray-500">Uplink Device</label>
+                        <select v-model="form.uplink_device" :disabled="!!form.virtual_host" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <option value="">-- None --</option>
+                            <option v-for="d in uplinkCandidates" :key="d.id" :value="d.name">{{ d.name }}</option>
+                        </select>
+                    </div>
+                    <div class="space-y-1 col-span-2">
+                        <label class="text-xs uppercase font-bold text-gray-500">Connection Details</label>
+                        <input v-model="form.uplink_notes" placeholder="e.g. Gi1/0/1 -> Gi0/24" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2">
+                    </div>
+
+                    <div class="col-span-full font-bold text-blue-500 border-b dark:border-gray-800 pb-2 mt-4">Properties</div>
+                    <div class="flex gap-6">
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" v-model="form.flag_dhcp" class="w-4 h-4 rounded text-blue-600"><span>DHCP Enabled</span></label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" v-model="form.flag_public_ip" class="w-4 h-4 rounded text-blue-600"><span>Public IP</span></label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" v-model="form.flag_wireless" class="w-4 h-4 rounded text-blue-600"><span>Wireless</span></label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" v-model="form.flag_oob" class="w-4 h-4 rounded text-blue-600"><span>Out of Band Mgmt</span></label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" v-model="form.flag_tailscale" class="w-4 h-4 rounded text-blue-600"><span>Tailscale</span></label>
+                    </div>
+                    <div class="col-span-full font-bold text-blue-500 border-b dark:border-gray-800 pb-2 mt-4 flex justify-between"><span>Custom Fields</span><button @click="addCustomField" class="text-xs bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-300">Add Field</button></div>
+                    <div class="col-span-full space-y-2"><div v-for="(field, index) in form.custom_fields" :key="index" class="flex gap-2"><input v-model="field.label" placeholder="Label" class="w-1/3 bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2"><input v-model="field.value" placeholder="Value" class="flex-1 bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2"><button @click="removeCustomField(index)" class="text-red-500 hover:bg-red-500/10 p-2 rounded"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div>
+                </div>
+                <div class="p-6 border-t dark:border-gray-800 bg-gray-50 dark:bg-gray-900 sticky bottom-0 flex justify-between"><button v-if="isEditing" @click="deleteDevice" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded">Delete Device</button><div v-else></div><div class="flex gap-2"><button @click="closeAllModals" class="px-4 py-2 rounded border dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800">Cancel</button><button @click="saveDevice" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded shadow-lg">Save</button></div></div>
+            </div>
+        </div>
+
+        <div v-if="showConnectionsModal" class="fixed inset-0 z-[80] flex items-center justify-center p-4 pointer-events-none">
+            <div class="bg-white dark:bg-gray-900 w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-xl shadow-2xl border dark:border-gray-700 flex flex-col pointer-events-auto">
+                <div class="p-4 border-b dark:border-gray-800 flex justify-between items-center sticky top-0 bg-white dark:bg-gray-900 z-10">
+                    <h2 class="text-lg font-bold flex items-center gap-2">
+                        <i data-lucide="network" class="text-blue-500"></i> Connected to: {{ connectionsParent.name }}
+                    </h2>
+                    <button @click="closeAllModals" class="text-gray-500 hover:text-red-500"><i data-lucide="x"></i></button>
+                </div>
+                <div class="p-0 overflow-auto">
+                    <div v-if="connectionsParent && connectionsParent.uplink_device" class="border-b dark:border-gray-800">
+                        <div class="bg-gray-100 dark:bg-gray-850 px-4 py-2 text-xs font-bold uppercase text-gray-500 flex justify-between items-center">
+                            <span>Uplink (Outbound Connection)</span>
+                            <span class="font-mono font-normal text-gray-400">{{ connectionsParent.uplink_notes }}</span>
+                        </div>
+                        <table class="w-full text-left border-collapse text-sm">
+                             <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                                <tr class="hover:bg-blue-50 dark:hover:bg-blue-900/20 bg-blue-50/50 dark:bg-blue-900/10">
+                                    <td class="p-3 font-medium text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                                        <i data-lucide="arrow-up-circle" class="w-4 h-4"></i>
+                                        {{ connectionsParent.uplink_device }}
+                                    </td>
+                                    <td class="p-3 font-mono text-gray-600 dark:text-gray-400">
+                                        {{ parentUplink ? parentUplink.ip_address : 'Unknown IP' }}
+                                    </td>
+                                    <td class="p-3 text-gray-500">
+                                        {{ parentUplink ? parentUplink.device_type : 'Unknown Device' }}
+                                    </td>
+                                </tr>
+                             </tbody>
+                        </table>
+                    </div>
+                    <div>
+                        <div class="bg-gray-100 dark:bg-gray-850 px-4 py-2 text-xs font-bold uppercase text-gray-500">
+                            Downlinks (Inbound Connections) <span class="ml-1 bg-gray-200 dark:bg-gray-700 px-1.5 rounded-full text-[10px]">{{ connectedDevices.length }}</span>
+                        </div>
+                        <table class="w-full text-left border-collapse text-sm">
+                            <thead class="bg-gray-50 dark:bg-gray-850 text-gray-500 font-semibold border-b dark:border-gray-800">
+                                <tr>
+                                    <th class="p-3">Device Name</th>
+                                    <th class="p-3">IP Address</th>
+                                    <th class="p-3">Type</th>
+                                    <th class="p-3">Port / Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                                <tr v-if="connectedDevices.length === 0">
+                                    <td colspan="4" class="p-6 text-center text-gray-500 italic">No devices found connected to this uplink.</td>
+                                </tr>
+                                <tr v-for="dev in connectedDevices" :key="dev.id" class="hover:bg-gray-50 dark:hover:bg-gray-800">
+                                    <td class="p-3 font-medium text-blue-600 dark:text-blue-400">{{ dev.name }}</td>
+                                    <td class="p-3 font-mono text-gray-600 dark:text-gray-400">{{ dev.ip_address }}</td>
+                                    <td class="p-3">{{ dev.device_type }}</td>
+                                    <td class="p-3 text-gray-500">{{ dev.uplink_notes || '-' }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="p-4 border-t dark:border-gray-800 bg-gray-50 dark:bg-gray-900 sticky bottom-0 text-right">
+                    <button @click="closeAllModals" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded shadow">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="showSubnetModal" class="fixed inset-0 z-[80] flex items-center justify-center p-4 pointer-events-none">
+            <div class="bg-white dark:bg-gray-900 w-full max-w-5xl max-h-[85vh] overflow-y-auto rounded-xl shadow-2xl border dark:border-gray-700 flex flex-col pointer-events-auto">
+                <div class="p-4 border-b dark:border-gray-800 flex justify-between items-center sticky top-0 bg-white dark:bg-gray-900 z-10">
+                    <h2 class="text-lg font-bold flex items-center gap-2">
+                        <i data-lucide="grid" class="text-blue-500"></i> Subnet View
+                    </h2>
+                    <button @click="closeAllModals" class="text-gray-500 hover:text-red-500"><i data-lucide="x"></i></button>
+                </div>
+                <div class="p-4 border-b dark:border-gray-800 bg-gray-50 dark:bg-gray-850">
+                    <div class="flex gap-2">
+                        <input v-model="subnetCIDR" @keyup.enter="scanSubnet" ref="subnetInput" placeholder="e.g. 192.168.1.0/24" class="flex-1 bg-white dark:bg-gray-900 border dark:border-gray-700 rounded p-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none">
+                        <button @click="scanSubnet" :disabled="scanning" class="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded text-sm font-bold flex items-center gap-2">
+                            <span v-if="!scanning">Scan</span>
+                            <i v-if="scanning" data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+                        </button>
+                    </div>
+                    <div v-if="subnetError" class="text-red-500 text-xs mt-2 font-mono">{{ subnetError }}</div>
+                </div>
+                
+                <div class="flex-1 overflow-auto relative min-h-[300px]">
+
+                    <table class="w-full text-left border-collapse text-sm">
+                        <thead class="bg-gray-50 dark:bg-gray-850 text-gray-500 font-semibold border-b dark:border-gray-800 sticky top-0 z-10">
+                            <tr>
+                                <th class="p-3 w-40">IP Address</th>
+                                <th class="p-3 w-24">Status</th>
+                                <th class="p-3">Device</th>
+                                <th class="p-3 w-24">Type</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-gray-800 font-mono">
+                            <tr v-if="subnetResults.length === 0 && !scanning">
+                                <td colspan="4" class="p-8 text-center text-gray-500 italic">Enter a CIDR above to view IP allocation.</td>
+                            </tr>
+                            <tr v-for="item in paginatedSubnetResults" :key="item.ip" class="hover:bg-gray-50 dark:hover:bg-gray-800">
+                                <td class="p-3 text-gray-600 dark:text-gray-400">
+                                    <button v-if="item.status === 'Free'" @click="openNewDeviceWithIP(item.ip, subnetCIDR)" class="hover:underline text-blue-600 dark:text-blue-400">{{ item.ip }}</button>
+                                    <span v-else>{{ item.ip }}</span>
+                                </td>
+                                <td class="p-3">
+                                    <span v-if="item.status === 'Used'" class="text-xs font-bold bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-2 py-1 rounded">USED</span>
+                                    <span v-else-if="item.status === 'Reserved'" class="text-xs font-bold bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 px-2 py-1 rounded">RSVD</span>
+                                    <span v-else-if="item.status === 'Network' || item.status === 'Broadcast'" class="text-xs font-bold bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 px-2 py-1 rounded">RSVD</span>
+                                    <span v-else class="text-xs font-bold bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 px-2 py-1 rounded">FREE</span>
+                                </td>
+                                <td class="p-3 font-sans">
+                                    <button v-if="item.device_name" @click="openDeviceByID(item.device_id)" class="text-blue-600 dark:text-blue-400 hover:underline font-medium text-left">
+                                        {{ item.device_name }}
+                                    </button>
+                                    <span v-else-if="item.status === 'Network'">Network Address</span>
+                                    <span v-else-if="item.status === 'Broadcast'">Broadcast Address</span>
+                                    <span v-else class="text-gray-400">-</span>
+                                </td>
+                                <td class="p-3 font-sans text-xs text-gray-500">{{ item.type || '-' }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div v-if="subnetResults.length > 0" class="p-3 border-t dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-900">
+                    <span class="text-xs text-gray-500">Showing {{ subnetPage * subnetPageSize + 1 }} - {{ Math.min((subnetPage + 1) * subnetPageSize, subnetResults.length) }} of {{ subnetResults.length }}</span>
+                    <div class="flex gap-2">
+                        <button @click="subnetPage--" :disabled="subnetPage === 0" class="px-3 py-1 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded text-xs disabled:opacity-50 hover:bg-gray-100 dark:hover:bg-gray-700">Prev</button>
+                        <button @click="subnetPage++" :disabled="(subnetPage + 1) * subnetPageSize >= subnetResults.length" class="px-3 py-1 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded text-xs disabled:opacity-50 hover:bg-gray-100 dark:hover:bg-gray-700">Next</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp } = Vue
+
+        createApp({
+            data() {
+                return {
+                    devices: [],
+                    isDark: true,
+                    // Authentication
+                    showLogin: false,
+                    authEnabled: false,
+                    loginCreds: { username: '', password: '' },
+                    loginError: '',
+                    // Menu
+                    menus: { mobileMenu: false, colMenu: false, contextMenu: false },
+                    contextMenuMode: 'mouse', 
+                    contextMenuX: 0,
+                    contextMenuY: 0,
+                    
+                    searchQuery: '',
+                    group_by: 'location',
+                    sortKey: 'name',
+                    sortAsc: true,
+                    // Modals
+                    showModal: false,
+                    showConnectionsModal: false, 
+                    showSubnetModal: false, 
+                    isEditing: false,
+                    selectedDevice: null,
+                    connectionsParent: null, 
+                    toastMsg: '',
+                    errors: {},
+                    // Subnet Tool Data
+                    subnetCIDR: '',
+                    subnetResults: [],
+                    scanning: false,
+                    subnetError: '',
+                    subnetPage: 0,      
+                    subnetPageSize: 256,
+                    subnetKey: 0, // NEW KEY
+                    
+                    // Collapsed state
+                    expandedGroups: {},
+                    // Device Types
+                    deviceTypes: ['Router', 'Switch', 'Server', 'Workstation', 'Firewall', 'Access Point', 'IoT', 'Camera', 'Printer', 'Reserved', 'Virtual Host', 'Wireless Bridge'].sort(), 
+                    
+                    // COLS
+                    cols: { 
+                        name: true, type: true, location: true, ip: true, subnet: true, gateway: true, 
+                        dns1: true, dns2: true, dns: false, mac: false, model: false, serial: false, 
+                        os: false, vhost: false, guest: false, uplink: false 
+                    },
+                    colLabels: { 
+                        name: 'Name', type: 'Type', location: 'Location', ip: 'IP Address', subnet: 'Subnet', gateway: 'Gateway', 
+                        dns1: 'Primary DNS', dns2: 'Secondary DNS', dns: 'DNS Name', mac: 'MAC Address', 
+                        model: 'Model', serial: 'Serial', os: 'OS', vhost: 'Virt Host', guest: 'Guest Name', uplink: 'Uplink' 
+                    },
+                    // Form Initialization
+                    form: { 
+                        name: '', device_type: 'Router', location: '', ip_address: '', dns_name: '', mac_address: '', serial_number: '', 
+                        uplink_device: '', uplink_notes: '', 
+                        custom_fields: [], flag_wireless: false 
+                    }
+                }
+            },
+            watch: {
+                searchQuery(newVal) {
+                    if (newVal) {
+                        for (const group in this.groupedDevices) {
+                            this.expandedGroups[group] = true;
+                        }
+                    } else {
+                        this.expandedGroups = {};
+                    }
+                },
+                group_by() {
+                    this.expandedGroups = {};
+                }
+            },
+            computed: {
+                isAnyMenuOpen() {
+                    return this.menus.mobileMenu || this.menus.colMenu || this.menus.contextMenu;
+                },
+                contextMenuStyles() {
+                    if (this.contextMenuMode !== 'mouse') return {};
+                    return this.getSmartCoords(this.contextMenuX, this.contextMenuY);
+                },
+                parentUplink() {
+                    if (!this.connectionsParent || !this.connectionsParent.uplink_device) return null;
+                    return this.devices.find(d => d.name === this.connectionsParent.uplink_device);
+                },
+                virtualHostCandidates() {
+                    return this.devices
+                        .filter(x => x.id !== this.form.id && x.device_type === 'Virtual Host')
+                        .sort((a, b) => a.name.localeCompare(b.name));
+                },
+                uplinkCandidates() {
+                    return this.devices
+                        .filter(x => x.id !== this.form.id && (['Router','Switch','Firewall','Wireless Bridge','Access Point'].includes(x.device_type) || x.name === this.form.virtual_host))
+                        .sort((a, b) => a.name.localeCompare(b.name));
+                },
+                connectedDevices() {
+                    if (!this.connectionsParent) return [];
+                    return this.devices
+                        .filter(d => d.uplink_device === this.connectionsParent.name)
+                        .sort((a, b) => a.name.localeCompare(b.name));
+                },
+                paginatedSubnetResults() {
+                    const start = this.subnetPage * this.subnetPageSize;
+                    const end = start + this.subnetPageSize;
+                    return this.subnetResults.slice(start, end);
+                },
+                groupedDevices() {
+                    const groups = {};
+                    let filtered = this.devices;
+                    if (this.searchQuery) {
+                        const lower = this.searchQuery.toLowerCase();
+                        filtered = this.devices.filter(d => {
+                            const standardMatch = (
+                                (d.name && d.name.toLowerCase().includes(lower)) ||
+                                (d.ip_address && d.ip_address.includes(lower)) ||
+                                (d.mac_address && d.mac_address.toLowerCase().includes(lower)) ||
+                                (d.serial_number && d.serial_number.toLowerCase().includes(lower)) ||
+                                (d.dns_name && d.dns_name.toLowerCase().includes(lower)) ||
+                                (d.location && d.location.toLowerCase().includes(lower)) ||
+                                (d.manufacturer && d.manufacturer.toLowerCase().includes(lower)) ||
+                                (d.model && d.model.toLowerCase().includes(lower)) ||
+                                (d.virtual_host && d.virtual_host.toLowerCase().includes(lower)) ||
+                                (d.guest_name && d.guest_name.toLowerCase().includes(lower)) ||
+                                (d.uplink_device && d.uplink_device.toLowerCase().includes(lower))
+                            );
+                            const customMatch = d.custom_fields && d.custom_fields.some(field => 
+                                field.value && field.value.toLowerCase().includes(lower)
+                            );
+                            return standardMatch || customMatch;
+                        });
+                    }
+                    const sorted = [...filtered].sort((a, b) => {
+                        let valA = a[this.sortKey] || '';
+                        let valB = b[this.sortKey] || '';
+                        if(this.sortKey === 'ip_address' || this.sortKey === 'default_gateway') return this.sortAsc ? this.ipCompare(valA, valB) : this.ipCompare(valB, valA);
+                        return this.sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                    });
+                    sorted.forEach(d => {
+                        const key = d[this.group_by] || 'Unassigned';
+                        if (!groups[key]) groups[key] = [];
+                        groups[key].push(d);
+                    });
+                    return Object.keys(groups).sort().reduce((obj, key) => { obj[key] = groups[key]; return obj; }, {});
+                }
+            },
+            methods: {
+                getSmartCoords(x, y) {
+                    const menuWidth = 192; // 12rem
+                    const menuHeight = 350; // Estimated height with clone option
+                    
+                    let finalX = x;
+                    let finalY = y;
+
+                    // Check Right Edge
+                    if (x + menuWidth > window.innerWidth) {
+                        finalX = x - menuWidth;
+                    }
+
+                    // Check Bottom Edge
+                    if (y + menuHeight > window.innerHeight) {
+                        finalY = y - menuHeight;
+                    }
+
+                    return { top: finalY + 'px', left: finalX + 'px' };
+                },
+                onVirtualHostChange() {
+                    if (this.form.virtual_host) {
+                        this.form.uplink_device = this.form.virtual_host;
+                    }
+                },
+                // REFACTORED SCAN SUBINET LOGIC
+                async scanSubnet() {
+                    if (!this.subnetCIDR || !this.subnetCIDR.trim()) return;
+                    
+                    this.subnetError = '';
+                    this.subnetResults = []; // clear old
+                    this.subnetPage = 0; 
+                    
+                    try {
+                        const res = await fetch(`/api/tools/subnet?cidr=${encodeURIComponent(this.subnetCIDR.trim())}`, {
+                            credentials: 'include'
+                        });
+                        if (!res.ok) {
+                            let errMsg = res.statusText;
+                            try { const err = await res.json(); if (err.detail) errMsg = err.detail; } catch (e) {} 
+                            throw new Error(`Scan failed: ${res.status} ${errMsg}`);
+                        }
+                        const data = await res.json();
+                        this.subnetResults = data;
+                        
+                    } catch (e) {
+                        console.error(e);
+                        this.subnetError = e.message || "Unknown error occurred";
+                    }
+                },
+                nextTickFocusSubnet() {
+                    this.$nextTick(() => {
+                        if(this.$refs.subnetInput) this.$refs.subnetInput.focus();
+                    });
+                },
+                openDeviceByID(id) {
+                    const dev = this.devices.find(d => d.id === id);
+                    if (dev) {
+                        this.closeAllModals();
+                        this.openModal(dev);
+                    }
+                },
+                triggerImport() { 
+                    if (this.$refs.fileInput) {
+                        this.$refs.fileInput.click(); 
+                    } else {
+                        alert("Import input not found. Please refresh the page.");
+                    }
+                },
+                async handleImport(event) {
+                    const file = event.target.files[0]; if (!file) return;
+                    const formData = new FormData(); formData.append('file', file);
+                    const res = await fetch('/api/devices/import', { method: 'POST', body: formData });
+                    if (res.ok) { this.toastMsg = 'Import Successful'; this.fetchDevices(); event.target.value = ''; }
+                },
+                toggleGroup(group) {
+                    if (this.expandedGroups[group]) {
+                        this.expandedGroups[group] = false;
+                    } else {
+                        this.expandedGroups[group] = true;
+                    }
+                },
+                selectAllCols() {
+                    for (const key in this.cols) { this.cols[key] = true; }
+                },
+                selectNoCols() {
+                    for (const key in this.cols) { this.cols[key] = false; }
+                },
+                resetCols() {
+                    const defaults = ['name', 'type', 'location', 'ip', 'subnet', 'gateway', 'dns1', 'dns2'];
+                    for (const key in this.cols) {
+                        this.cols[key] = defaults.includes(key);
+                    }
+                },
+                cloneDevice(device) {
+                    const clonedData = JSON.parse(JSON.stringify(device));
+                    delete clonedData.id;
+                    clonedData.name = clonedData.name + ' - Copy';
+                    this.form = clonedData;
+                    this.isEditing = false;
+                    this.showModal = true;
+                },
+                async checkAuth() {
+                    try {
+                        const res = await fetch('/api/status');
+                        const data = await res.json();
+                        this.authEnabled = data.auth_required;
+                        if (data.auth_required && !data.logged_in) {
+                            this.showLogin = true;
+                        } else {
+                            this.showLogin = false;
+                            this.fetchDevices();
+                        }
+                    } catch(e) { console.error("Status check failed", e); }
+                },
+                async performLogin() {
+                    const res = await fetch('/api/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(this.loginCreds)
+                    });
+                    if (res.ok) {
+                        this.showLogin = false;
+                        this.loginError = '';
+                        this.fetchDevices();
+                    } else {
+                        this.loginError = "Invalid Username or Password";
+                    }
+                },
+                async performLogout() {
+                    await fetch('/api/logout', { method: 'POST' });
+                    window.location.reload();
+                },
+                async fetchDevices() { 
+                    try {
+                        const res = await fetch('/api/devices');
+                        if (res.status === 401) { this.checkAuth(); return; }
+                        this.devices = await res.json(); 
+                    } catch (e) { console.error("Failed to fetch devices", e); }
+                },
+                closeAllMenus() {
+                    this.menus.mobileMenu = false;
+                    this.menus.colMenu = false;
+                    this.menus.contextMenu = false;
+                },
+                closeAllModals() {
+                    this.showModal = false;
+                    this.showConnectionsModal = false;
+                    this.showSubnetModal = false;
+                },
+                toggleMenu(name) {
+                    if (this.menus[name]) {
+                        this.closeAllMenus();
+                    } else {
+                        this.closeAllMenus();
+                        this.menus[name] = true;
+                    }
+                },
+                sort(key) { if (this.sortKey === key) { this.sortAsc = !this.sortAsc; } else { this.sortKey = key; this.sortAsc = true; } },
+                ipCompare(a, b) {
+                    const numA = a.split('.').map(n => parseInt(n)); const numB = b.split('.').map(n => parseInt(n));
+                    for (let i = 0; i < 4; i++) { if ((numA[i] || 0) > (numB[i] || 0)) return 1; if ((numA[i] || 0) < (numB[i] || 0)) return -1; }
+                    return 0;
+                },
+                openModal(device = null, prefill = {}) {
+                    this.closeAllMenus();
+                    this.errors = {};
+                    if (device) { 
+                        this.isEditing = true; 
+                        this.selectedDevice = device; 
+                        this.form = JSON.parse(JSON.stringify(device)); 
+                    } else { 
+                        this.isEditing = false; 
+                        this.form = { name: '', device_type: this.deviceTypes[0], location: '', flag_dhcp: false, flag_public_ip: false, flag_oob: false, flag_wireless: false, flag_tailscale: false, custom_fields: [] }; 
+                    }
+                    Object.assign(this.form, prefill);
+                    this.showModal = true;
+                },
+                cidrToMask(cidr) {
+                    const prefix = parseInt(cidr.split('/')[1]);
+                    const mask = (0xffffffff << (32 - prefix)) >>> 0;
+                    return [
+                        (mask >>> 24) & 255,
+                        (mask >>> 16) & 255,
+                        (mask >>> 8) & 255,
+                        mask & 255
+                    ].join('.');
+                },
+                getFirstHost(cidr) {
+                    const parts = cidr.split('/');
+                    const ipStr = parts[0];
+                    const prefix = parseInt(parts[1]);
+                    const ipParts = ipStr.split('.').map(Number);
+                    const ipNum = (ipParts[0] << 24) | (ipParts[1] << 16) | (ipParts[2] << 8) | ipParts[3];
+                    const mask = (0xffffffff << (32 - prefix)) >>> 0;
+                    const netNum = ipNum & mask;
+                    const firstHostNum = netNum + 1;
+                    return [
+                        (firstHostNum >>> 24) & 255,
+                        (firstHostNum >>> 16) & 255,
+                        (firstHostNum >>> 8) & 255,
+                        firstHostNum & 255
+                    ].join('.');
+                },
+                openNewDeviceWithIP(ip, cidr) {
+                    const mask = this.cidrToMask(cidr);
+                    const gateway = this.getFirstHost(cidr);
+                    this.showSubnetModal = false;
+                    this.openModal(null, { ip_address: ip, subnet_mask: mask, default_gateway: gateway });
+                },
+                openConnections(device) {
+                    this.connectionsParent = device;
+                    this.showConnectionsModal = true;
+                },
+                addCustomField() { this.form.custom_fields.push({ label: '', value: '' }); },
+                removeCustomField(idx) { this.form.custom_fields.splice(idx, 1); },
+                validateIP(field) {
+                    const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+                    if (this.form[field] && !ipRegex.test(this.form[field])) { this.errors[field] = true; alert(`Invalid IP in ${field}`); } else { this.errors[field] = false; }
+                },
+                autoFillSubnetFromIP() {
+                    const val = this.form.ip_address;
+                    if (val && val.includes('/')) {
+                        const parts = val.split('/');
+                        if (parts.length === 2) {
+                            const ip = parts[0].trim();
+                            const cidr = parts[1].trim();
+                            const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+                            if (ipRegex.test(ip) && /^\d+$/.test(cidr) && parseInt(cidr) >= 0 && parseInt(cidr) <= 32) {
+                                this.form.ip_address = ip;
+                                this.form.subnet_mask = this.cidrToMask(ip + '/' + cidr);
+                                this.form.default_gateway = this.getFirstHost(ip + '/' + cidr);
+                            }
+                        }
+                    }
+                },
+                handleIPBlur() {
+                    this.autoFillSubnetFromIP();
+                    this.validateIP('ip_address');
+                },
+                validateMAC() {
+                    let val = this.form.mac_address || '';
+                    let clean = val.replace(/[^a-fA-F0-9]/g, '');
+                    if(clean.length === 12) {
+                        this.form.mac_address = clean.match(/.{1,2}/g).join(':').toUpperCase();
+                        this.errors.mac_address = false;
+                    } else if (clean.length > 0) {
+                        this.errors.mac_address = true;
+                    } else {
+                        this.errors.mac_address = false;
+                    }
+                },
+                async saveDevice() {
+                    const method = this.isEditing ? 'PUT' : 'POST'; const url = this.isEditing ? `/api/devices/${this.form.id}` : '/api/devices';
+                    const res = await fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.form) });
+                    if (res.ok) { this.showModal = false; this.fetchDevices(); } else { alert("Error saving device."); }
+                },
+                async deleteDevice(id = null) {
+                    if(!confirm("Are you sure?")) return;
+                    await fetch(`/api/devices/${id || this.form.id}`, { method: 'DELETE' });
+                    this.showModal = false; this.fetchDevices();
+                },
+                openContextMenu(e, device, mode) {
+                    this.closeAllMenus();
+                    this.selectedDevice = device;
+                    this.contextMenuMode = mode;
+                    if (mode === 'mouse') {
+                        this.contextMenuX = e.clientX;
+                        this.contextMenuY = e.clientY;
+                        if (window.innerWidth - e.clientX < 200) this.contextMenuX -= 180;
+                    }
+                    setTimeout(() => { this.menus.contextMenu = true; }, 10);
+                },
+                toggleTheme() {
+                    this.isDark = !this.isDark;
+                    if (this.isDark) document.documentElement.classList.add('dark'); else document.documentElement.classList.remove('dark');
+                }
+            },
+            mounted() { 
+                try {
+                    this.checkAuth(); 
+                    lucide.createIcons(); 
+                } catch(e) {
+                    console.error("Vue failed to mount:", e);
+                    alert("Application failed to load: " + e.message);
+                }
+            },
+            updated() { lucide.createIcons(); }
+        }).mount('#app')
+    </script>
+</body>
+</html>
