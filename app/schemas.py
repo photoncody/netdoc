@@ -1,5 +1,15 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Any
+from datetime import datetime
+
+class DeviceImage(BaseModel):
+    id: int
+    device_id: int
+    filename: str
+    uploaded_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 class CustomField(BaseModel):
     label: str
@@ -42,5 +52,6 @@ class DeviceCreate(DeviceBase):
 
 class Device(DeviceBase):
     id: int
+    images: List[DeviceImage] = []
     class Config:
         from_attributes = True
