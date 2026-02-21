@@ -20,6 +20,14 @@ models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI(title="NetDoc API")
 
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
 # --- Authentication Configuration ---
 ADMIN_USER = os.getenv("NETDOC_USER")
 ADMIN_PASS = os.getenv("NETDOC_PASSWORD")
@@ -290,7 +298,7 @@ def delete_device_image(image_id: int, db: Session = Depends(get_db)):
     if not db_image: raise HTTPException(status_code=404, detail="Image not found")
 
     # Delete file from filesystem
-    filepath = os.path.join("app/static/uploads", db_image.filename)
+    filepath = os.path.join(UPLOAD_DIR, db_image.filename)
     if os.path.exists(filepath):
         os.remove(filepath)
 
