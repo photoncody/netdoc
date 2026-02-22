@@ -1,5 +1,7 @@
-fastapi
-uvicorn
-sqlalchemy
-pydantic
-python-multipart
+fastapi==0.129.2
+uvicorn==0.41.0
+sqlalchemy==2.0.46
+pydantic==2.12.5
+python-multipart==0.0.22
+pytest==9.0.2
+httpx==0.28.1
