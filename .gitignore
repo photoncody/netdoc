@@ -127,3 +127,8 @@ dmypy.json
 
 # NetDoc specifics
 *.db
+
+# General
+.DS_Store
+.vscode/
+.idea/
