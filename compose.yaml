@@ -1,6 +1,7 @@
 services:
   netdoc:
-    build: .
+    image: ghcr.io/photoncody/netdoc:latest
+    # build: .
     container_name: netdoc
     ports:
       - "8080:80"
