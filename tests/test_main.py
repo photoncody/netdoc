@@ -100,3 +100,13 @@ def test_create_and_delete_device(setup_db):
 
         get_res_after = client.get("/api/devices")
         assert not any(d["id"] == dev_id for d in get_res_after.json())
+
+def test_scan_subnet_invalid_cidr(setup_db):
+    response = client.get("/api/tools/subnet?cidr=invalid")
+
+    status_res = client.get("/api/status")
+    if status_res.json()["auth_required"]:
+        assert response.status_code == 401
+    else:
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid CIDR format (e.g., 192.168.1.0/24)"
