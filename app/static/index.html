@@ -54,7 +54,7 @@
         <header class="bg-white dark:bg-gray-900 border-b dark:border-gray-800 shadow-sm z-30 relative shrink-0">
             <div class="py-2 px-4 flex justify-between items-center gap-4">
                 <h1 class="text-xl font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2 whitespace-nowrap"><i data-lucide="network"></i> NetDoc</h1>
-                <div class="hidden md:flex items-center gap-4 flex-1 justify-end">
+                <div class="hidden xl:flex items-center gap-4 flex-1 justify-end">
                     
                     <div class="relative w-64">
                         <i data-lucide="search" class="absolute left-2 top-2 w-4 h-4 text-gray-400"></i>
@@ -63,6 +63,7 @@
                     </div>
                     
                     <button @click="showSubnetModal = true; nextTickFocusSubnet()" class="bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded text-xs flex items-center gap-2 whitespace-nowrap"><i data-lucide="grid" class="w-3 h-3"></i> Subnet View</button>
+                    <button @click="showNetworksModal = true" class="bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-1.5 rounded text-xs flex items-center gap-2 whitespace-nowrap"><i data-lucide="globe" class="w-3 h-3"></i> Networks</button>
 
                     <div class="flex bg-gray-200 dark:bg-gray-800 rounded p-0.5 text-xs whitespace-nowrap">
                         <button @click="group_by = 'location'" :class="{'bg-white dark:bg-gray-700 shadow': group_by === 'location'}" class="px-3 py-1 rounded transition">By Location</button>
@@ -79,7 +80,8 @@
                     <button @click="toggleTheme" class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-800"><i data-lucide="moon" v-if="!isDark" class="w-4 h-4"></i><i data-lucide="sun" v-else class="w-4 h-4 text-yellow-400"></i></button>
                     <button v-if="authEnabled" @click="performLogout" title="Logout" class="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"><i data-lucide="log-out" class="w-4 h-4"></i></button>
                 </div>
-                <div class="flex items-center gap-2 md:hidden">
+                <div class="flex items-center gap-2 xl:hidden flex-1 justify-end">
+                    <button @click="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs flex items-center gap-2 whitespace-nowrap"><i data-lucide="plus-circle" class="w-3 h-3"></i> Add</button>
                     <button @click="toggleTheme" class="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-800"><i data-lucide="moon" v-if="!isDark" class="w-5 h-5"></i><i data-lucide="sun" v-else class="w-5 h-5 text-yellow-400"></i></button>
                     <button @click.stop="toggleMenu('mobileMenu')" class="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-800"><i data-lucide="menu" class="w-6 h-6"></i></button>
                 </div>
@@ -160,10 +162,11 @@
                 <input v-model="searchQuery" placeholder="Search devices..." class="w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded py-2.5 pl-10 pr-10 text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-sm">
                 <button v-if="searchQuery" @click="searchQuery = ''" class="absolute right-3 top-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><i data-lucide="x" class="w-4 h-4"></i></button>
             </div>
+            <button @click="openModal(); closeAllMenus()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded text-base font-bold flex justify-center items-center gap-2 shadow"><i data-lucide="plus-circle" class="w-5 h-5"></i> Add New Device</button>
             <button @click="showSubnetModal = true; nextTickFocusSubnet(); closeAllMenus()" class="w-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 py-3 rounded text-base font-bold flex justify-center items-center gap-2"><i data-lucide="grid" class="w-5 h-5"></i> Subnet View</button>
-            <button @click="openModal()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded text-base font-bold flex justify-center items-center gap-2 shadow"><i data-lucide="plus-circle" class="w-5 h-5"></i> Add New Device</button>
+            <button @click="showNetworksModal = true; closeAllMenus()" class="w-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 py-3 rounded text-base font-bold flex justify-center items-center gap-2"><i data-lucide="globe" class="w-5 h-5"></i> Networks</button>
             <div class="flex flex-col gap-1"><span class="text-xs font-bold uppercase text-gray-500">View By</span><div class="flex bg-gray-200 dark:bg-gray-800 rounded p-1"><button @click="group_by = 'location'" :class="{'bg-white dark:bg-gray-700 shadow': group_by === 'location'}" class="flex-1 py-2 rounded transition text-sm">Location</button><button @click="group_by = 'device_type'" :class="{'bg-white dark:bg-gray-700 shadow': group_by === 'device_type'}" class="flex-1 py-2 rounded transition text-sm">Type</button></div></div>
-            <div class="grid grid-cols-2 gap-3"><button @click="triggerImport" class="bg-white dark:bg-gray-800 border dark:border-gray-700 py-3 rounded flex justify-center items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700"><i data-lucide="upload" class="w-4 h-4"></i> Import</button><a href="/api/devices/export" target="_blank" class="bg-white dark:bg-gray-800 border dark:border-gray-700 py-3 rounded flex justify-center items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700"><i data-lucide="download" class="w-4 h-4"></i> Export</a></div>
+            <div class="grid grid-cols-2 gap-3"><button @click="triggerImport(); closeAllMenus()" class="bg-white dark:bg-gray-800 border dark:border-gray-700 py-3 rounded flex justify-center items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700"><i data-lucide="upload" class="w-4 h-4"></i> Import</button><a href="/api/devices/export" target="_blank" @click="closeAllMenus()" class="bg-white dark:bg-gray-800 border dark:border-gray-700 py-3 rounded flex justify-center items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700"><i data-lucide="download" class="w-4 h-4"></i> Export</a></div>
             <div class="border-t dark:border-gray-800 pt-2"><h3 class="text-sm font-bold text-gray-500 uppercase mb-2">Visible Columns</h3><div class="grid grid-cols-2 gap-2"><label v-for="(val, key) in cols" :key="key" class="flex items-center gap-2 p-2 bg-white dark:bg-gray-800 rounded border dark:border-gray-700 text-sm"><input type="checkbox" v-model="cols[key]" class="w-4 h-4 rounded text-blue-600">{{ colLabels[key] }}</label></div></div>
         </div>
 
@@ -200,7 +203,7 @@
                     <div class="col-span-full font-bold text-blue-500 border-b dark:border-gray-800 pb-2 mt-2">Identification</div>
                     <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Device Name</label><input v-model="form.name" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2 outline-none"></div>
                     <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Type</label><select v-model="form.device_type" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2"><option v-for="type in deviceTypes" :key="type" :value="type">{{ type }}</option></select></div>
-                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Location</label><input v-model="form.location" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2"></div>
+                    <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Location</label><input v-model="form.location" @input="form.location_manual_override = true" :placeholder="(!form.location_manual_override && form.ip_address && form.location) ? 'Auto Detected' : 'Input Location'" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2"><div v-if="!form.location_manual_override && form.location" class="text-[10px] text-green-500">Auto Detected from IP</div></div>
                     <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Manufacturer</label><input v-model="form.manufacturer" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2"></div>
                     <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Model</label><input v-model="form.model" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2"></div>
                     <div class="space-y-1"><label class="text-xs uppercase font-bold text-gray-500">Serial Number</label><input v-model="form.serial_number" class="w-full bg-gray-100 dark:bg-gray-800 border dark:border-gray-700 rounded p-2"></div>
@@ -426,7 +429,10 @@
                     // Modals
                     showModal: false,
                     showConnectionsModal: false, 
-                    showSubnetModal: false, 
+                    showSubnetModal: false,
+                    showNetworksModal: false,
+                    locationNetworks: [],
+                    networkForm: {id: null, location: '', subnet: '', description: ''},
                     isEditing: false,
                     selectedDevice: null,
                     connectionsParent: null, 
@@ -470,6 +476,35 @@
                 }
             },
             watch: {
+                'form.ip_address'(newIp) {
+                    if (!this.form.location_manual_override && newIp) {
+                        let detected = null;
+                        for (const net of this.locationNetworks) {
+                            // Basic client-side CIDR check, or fallback to simple prefix matching if complex.
+                            // Actually, true CIDR matching in JS is complex. We can rely on backend or do basic match.
+                            // To do it properly in JS requires a CIDR lib, but we can do a naive IP in range check.
+
+                            try {
+                                const [subnetIp, mask] = net.subnet.split('/');
+                                const ipToNum = (ip) => ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0;
+
+                                const ipNum = ipToNum(newIp);
+                                const subnetNum = ipToNum(subnetIp);
+                                const maskNum = mask ? (0xffffffff << (32 - parseInt(mask, 10))) >>> 0 : 0xffffffff;
+
+                                if ((ipNum & maskNum) === (subnetNum & maskNum)) {
+                                    detected = net.location;
+                                    break;
+                                }
+                            } catch(e) {}
+                        }
+
+                        if (detected && this.form.location !== detected) {
+                            this.form.location = detected;
+                            this.form.location_manual_override = false; // ensure it stays false
+                        }
+                    }
+                },
                 searchQuery(newVal) {
                     if (newVal) {
                         for (const group in this.groupedDevices) {
@@ -674,7 +709,8 @@
                     const file = event.target.files[0]; if (!file) return;
                     const formData = new FormData(); formData.append('file', file);
                     const res = await fetch('/api/devices/import', { method: 'POST', body: formData });
-                    if (res.ok) { this.toastMsg = 'Import Successful'; this.fetchDevices(); event.target.value = ''; }
+                    if (res.ok) { this.toastMsg = 'Import Successful'; this.fetchDevices();
+                this.fetchNetworks(); event.target.value = ''; }
                 },
                 toggleGroup(group) {
                     if (this.expandedGroups[group]) {
@@ -713,6 +749,7 @@
                         } else {
                             this.showLogin = false;
                             this.fetchDevices();
+                this.fetchNetworks();
                         }
                     } catch(e) { console.error("Status check failed", e); }
                 },
@@ -726,6 +763,7 @@
                         this.showLogin = false;
                         this.loginError = '';
                         this.fetchDevices();
+                this.fetchNetworks();
                     } else {
                         this.loginError = "Invalid Username or Password";
                     }
@@ -775,7 +813,7 @@
                         this.fetchImages(device.id);
                     } else { 
                         this.isEditing = false; 
-                        this.form = { name: '', device_type: this.deviceTypes[0], location: '', flag_dhcp: false, flag_public_ip: false, flag_oob: false, flag_wireless: false, flag_tailscale: false, custom_fields: [] }; 
+                        this.form = { name: '', device_type: this.deviceTypes[0], location: '', flag_dhcp: false, flag_public_ip: false, flag_oob: false, flag_wireless: false, flag_tailscale: false, custom_fields: [], location_manual_override: false };
                         this.images = [];
                     }
                     Object.assign(this.form, prefill);
@@ -856,14 +894,23 @@
                     }
                 },
                 async saveDevice() {
+                    if (!this.form.location) {
+                        alert("Location is required. Please manually input a location or provide an IP that auto-detects one.");
+                        return;
+                    }
                     const method = this.isEditing ? 'PUT' : 'POST'; const url = this.isEditing ? `/api/devices/${this.form.id}` : '/api/devices';
                     const res = await fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.form) });
-                    if (res.ok) { this.showModal = false; this.fetchDevices(); } else { alert("Error saving device."); }
+                    if (res.ok) { this.showModal = false; this.fetchDevices();
+                this.fetchNetworks(); } else {
+                        const data = await res.json().catch(() => ({}));
+                        alert("Error saving device: " + (data.detail || "Unknown error"));
+                    }
                 },
                 async deleteDevice(id = null) {
                     if(!confirm("Are you sure?")) return;
                     await fetch(`/api/devices/${id || this.form.id}`, { method: 'DELETE' });
                     this.showModal = false; this.fetchDevices();
+                this.fetchNetworks();
                 },
                 openContextMenu(e, device, mode) {
                     this.closeAllMenus();
