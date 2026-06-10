@@ -776,7 +776,34 @@
                     await fetch('/api/logout', { method: 'POST' });
                     window.location.reload();
                 },
+
+                async fetchNetworks() {
+                    try {
+                        const res = await fetch('/api/networks');
+                        if (res.ok) {
+                            this.locationNetworks = await res.json();
+                        }
+                    } catch (e) { console.error("Error fetching networks", e); }
+                },
+                async saveNetwork() {
+                    const method = this.networkForm.id ? 'PUT' : 'POST';
+                    const url = this.networkForm.id ? `/api/networks/${this.networkForm.id}` : '/api/networks';
+                    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.networkForm) });
+                    if (res.ok) {
+                        this.networkForm = {id: null, location: '', subnet: '', description: ''};
+                        this.fetchNetworks();
+                        this.fetchDevices(); // In case devices updated
+                    }
+                },
+                async deleteNetwork(id) {
+                    if(!confirm("Delete this network?")) return;
+                    const res = await fetch(`/api/networks/${id}`, { method: 'DELETE' });
+                    if (res.ok) {
+                        this.fetchNetworks();
+                    }
+                },
                 async fetchDevices() { 
+
                     try {
                         const res = await fetch('/api/devices');
                         if (res.status === 401) { this.checkAuth(); return; }
