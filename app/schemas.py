@@ -46,6 +46,7 @@ class DeviceBase(BaseModel):
     flag_wireless: bool = False
     flag_tailscale: bool = False
     custom_fields: List[CustomField] = []
+    location_manual_override: bool = False
 
 class DeviceCreate(DeviceBase):
     pass
@@ -53,5 +54,18 @@ class DeviceCreate(DeviceBase):
 class Device(DeviceBase):
     id: int
     images: List[DeviceImage] = []
+    class Config:
+        from_attributes = True
+
+class LocationNetworkBase(BaseModel):
+    location: str
+    subnet: str
+    description: Optional[str] = None
+
+class LocationNetworkCreate(LocationNetworkBase):
+    pass
+
+class LocationNetwork(LocationNetworkBase):
+    id: int
     class Config:
         from_attributes = True

@@ -38,6 +38,8 @@ SESSION_TOKEN = secrets.token_hex(16) if AUTH_ENABLED else None
 @app.on_event("startup")
 def perform_migrations():
     """Attempts to add new columns to existing DBs without full migration tool"""
+    # Auto-create location_networks if it doesn't exist
+    models.LocationNetwork.__table__.create(database.engine, checkfirst=True)
     with database.engine.connect() as conn:
         try: conn.execute(text("ALTER TABLE devices ADD COLUMN dns_name VARCHAR")); conn.commit()
         except: pass
@@ -52,6 +54,8 @@ def perform_migrations():
         try: conn.execute(text("ALTER TABLE devices ADD COLUMN uplink_notes VARCHAR")); conn.commit()
         except: pass
         try: conn.execute(text("ALTER TABLE devices ADD COLUMN flag_tailscale BOOLEAN DEFAULT 0")); conn.commit()
+        except: pass
+        try: conn.execute(text("ALTER TABLE devices ADD COLUMN location_manual_override BOOLEAN DEFAULT 0")); conn.commit()
         except: pass
 
 def get_db():
@@ -224,13 +228,90 @@ def scan_subnet(cidr: str, db: Session = Depends(get_db)):
 
 # --- CRUD Operations ---
 
+
+# --- Auto-Detection Logic ---
+def detect_location_from_ip(ip: str, db: Session) -> str | None:
+    if not ip: return None
+    try:
+        ip_obj = ipaddress.ip_address(ip)
+    except ValueError:
+        return None
+
+    networks = db.query(models.LocationNetwork).all()
+    for net in networks:
+        try:
+            net_obj = ipaddress.ip_network(net.subnet, strict=False)
+            if ip_obj in net_obj:
+                return net.location
+        except ValueError:
+            continue
+    return None
+
+def update_all_device_locations(db: Session):
+    devices = db.query(models.Device).filter(models.Device.location_manual_override == False).all()
+    for device in devices:
+        if device.ip_address:
+            new_loc = detect_location_from_ip(device.ip_address, db)
+            if new_loc is not None:
+                device.location = new_loc
+            else:
+                # If no location matched and it was not manually overridden, do we clear it or keep it?
+                # User asked that if they don't input a location manually and there's no auto detect, they shouldn't be able to save.
+                # However, for retrospect update, maybe we just don't clear.
+                pass
+    db.commit()
+
 @app.get("/api/devices", response_model=List[schemas.Device], dependencies=[Depends(verify_auth)])
 def read_devices(skip: int = 0, limit: int = 1000, db: Session = Depends(get_db)):
     devices = db.query(models.Device).all()
     return devices
 
+
+# --- Networks API ---
+@app.get("/api/networks", response_model=List[schemas.LocationNetwork], dependencies=[Depends(verify_auth)])
+def read_networks(db: Session = Depends(get_db)):
+    return db.query(models.LocationNetwork).all()
+
+@app.post("/api/networks", response_model=schemas.LocationNetwork, dependencies=[Depends(verify_auth)])
+def create_network(network: schemas.LocationNetworkCreate, db: Session = Depends(get_db)):
+    db_net = models.LocationNetwork(**network.dict())
+    db.add(db_net)
+    db.commit()
+    db.refresh(db_net)
+    update_all_device_locations(db)
+    return db_net
+
+@app.put("/api/networks/{network_id}", response_model=schemas.LocationNetwork, dependencies=[Depends(verify_auth)])
+def update_network(network_id: int, network: schemas.LocationNetworkCreate, db: Session = Depends(get_db)):
+    db_net = db.query(models.LocationNetwork).filter(models.LocationNetwork.id == network_id).first()
+    if not db_net: raise HTTPException(status_code=404, detail="Network not found")
+    for key, value in network.dict().items(): setattr(db_net, key, value)
+    db.commit()
+    db.refresh(db_net)
+    update_all_device_locations(db)
+    return db_net
+
+@app.delete("/api/networks/{network_id}", dependencies=[Depends(verify_auth)])
+def delete_network(network_id: int, db: Session = Depends(get_db)):
+    db_net = db.query(models.LocationNetwork).filter(models.LocationNetwork.id == network_id).first()
+    if not db_net: raise HTTPException(status_code=404, detail="Network not found")
+    db.delete(db_net)
+    db.commit()
+    # It might make sense to update locations here too, but it's not clear if we should clear locations
+    # Just running update_all_device_locations(db) might not do anything if we don't clear.
+    # For now, let's keep it simple.
+    return {"ok": True}
+
 @app.post("/api/devices", response_model=schemas.Device, dependencies=[Depends(verify_auth)])
 def create_device(device: schemas.DeviceCreate, db: Session = Depends(get_db)):
+    if not device.location_manual_override and device.ip_address:
+        detected_loc = detect_location_from_ip(device.ip_address, db)
+        if detected_loc:
+            device.location = detected_loc
+
+    if not device.location:
+        raise HTTPException(status_code=400, detail="Location must be provided or auto-detectable")
+
     db_device = models.Device(**device.dict())
     db.add(db_device)
     db.commit()
@@ -241,6 +322,15 @@ def create_device(device: schemas.DeviceCreate, db: Session = Depends(get_db)):
 def update_device(device_id: int, device: schemas.DeviceCreate, db: Session = Depends(get_db)):
     db_device = db.query(models.Device).filter(models.Device.id == device_id).first()
     if not db_device: raise HTTPException(status_code=404, detail="Device not found")
+
+    if not device.location_manual_override and device.ip_address:
+        detected_loc = detect_location_from_ip(device.ip_address, db)
+        if detected_loc:
+            device.location = detected_loc
+
+    if not device.location:
+        raise HTTPException(status_code=400, detail="Location must be provided or auto-detectable")
+
     for key, value in device.dict().items(): setattr(db_device, key, value)
     db.commit()
     db.refresh(db_device)
