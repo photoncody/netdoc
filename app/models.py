@@ -50,5 +50,13 @@ class Device(Base):
 
     # Custom Fields
     custom_fields = Column(JSON, default=list)
+    location_manual_override = Column(Boolean, default=False)
 
     images = relationship("DeviceImage", back_populates="device", cascade="all, delete-orphan")
+class LocationNetwork(Base):
+    __tablename__ = "location_networks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    location = Column(String, index=True)
+    subnet = Column(String)
+    description = Column(String, nullable=True)
