@@ -7,7 +7,7 @@ services:
       - "8080:80"
     #environment:
     # - NETDOC_USER=admin
-    # - NETDOC_PASSWORD=<your-secure-password> 
+    # - NETDOC_PASSWORD=<your-secure-password>
     # Uncomment and set these environment variables to enable authentication, otherwise the application will run without authentication.
     volumes:
       - netdoc_data:/data
