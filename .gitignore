@@ -100,12 +100,35 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Secrets & credentials
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+.aws/
+.secrets/
+secrets/
+credentials.json
+**/credentials.json
+
+# Node (if added later)
+node_modules/
+
+# Cursor / local agent config
+.cursor/
 
 # Spyder project settings
 .spyderproject
