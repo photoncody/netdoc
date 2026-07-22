@@ -45,4 +45,11 @@ tests/
 
 # Project Specific
 .env
+.env.*
+!.env.example
 *.db
+*.pem
+*.key
+secrets/
+.aws/
+credentials.json

@@ -80,3 +80,7 @@ To run locally without Docker:
     uvicorn app.main:app --reload
     ```
     *Note: You might need to ensure the `/data` directory exists and is writable, or adjust the database path in `app/database.py`.*
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
